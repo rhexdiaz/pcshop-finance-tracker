@@ -16,6 +16,7 @@ export default function Root() {
     { to: '/transactions', label: 'Transactions' },
     { to: '/bills', label: 'Bills' },
     { to: '/savings', label: 'Savings' },
+    { to: '/reports', label: 'Reports' },
   ]
 
   return (

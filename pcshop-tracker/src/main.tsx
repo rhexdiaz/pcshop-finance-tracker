@@ -10,7 +10,8 @@ import Transactions from './routes/Transactions'
 import Bills from './routes/Bills'
 import Savings from './routes/Savings'
 import AdminInvite from './routes/AdminInvite'
-import Auth from './routes/Auth' // sign-in only (admin handles user creation)
+import Auth from './routes/Auth' 
+import Reports from './routes/Reports' 
 
 const router = createBrowserRouter([
   {
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
       { path: 'transactions', element: <Transactions /> },
       { path: 'bills', element: <Bills /> },
       { path: 'savings', element: <Savings /> },
+      { path: 'reports', element: <Reports /> },
       { path: 'admin/invite', element: <AdminInvite /> }, // admin-only UI (component checks role)
     ],
   },
