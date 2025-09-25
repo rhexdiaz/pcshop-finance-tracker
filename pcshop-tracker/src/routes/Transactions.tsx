@@ -1,0 +1,142 @@
+import { useEffect, useState } from 'react'
+import { formatISO } from 'date-fns'
+import { supabase } from '../lib/supabaseClient'
+import { fmtCurrency } from '../lib/currency'
+import { useSession } from '../lib/session'
+import { styles as s, cx } from '../ui'
+
+type TxType = 'income' | 'expense' | 'savings'
+type Tx = { id: string; date: string; type: TxType; category: string; amount: number; note?: string }
+
+const CATS: Record<TxType, string[]> = {
+  income: ['PisoNet', 'Water Refilling', 'Printing', 'Software Services', 'Other'],
+  expense: ['Water', 'Rent', 'Electricity', 'Internet', 'Salaries', 'Marketing', 'Tax', 'Other'],
+  savings: ['Emergency Fund', 'Store Upgrade', 'Marketing Fund', 'New Tools', 'Other'],
+}
+
+export default function Transactions() {
+  const { profile } = useSession()
+  const canWrite = profile?.role === 'admin' || profile?.role === 'editor'
+
+  const [items, setItems] = useState<Tx[]>([])
+  const [type, setType] = useState<TxType>('income')
+  const [date, setDate] = useState<string>(formatISO(new Date(), { representation: 'date' }))
+  const [amount, setAmount] = useState('')
+  const [category, setCategory] = useState(CATS['income'][0])
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const valid = Number(amount) > 0 && !!date && !!category
+
+  const refresh = async () => {
+    setLoading(true)
+    const { data, error } = await supabase.from('transactions').select('*').order('date', { ascending: false }).limit(200)
+    setLoading(false)
+    if (error) return setError(error.message)
+    setItems((data || []) as Tx[])
+  }
+
+  useEffect(() => { refresh() }, [])
+  useEffect(() => { setCategory(CATS[type][0]) }, [type])
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    if (!canWrite) return setError('You do not have permission to add transactions.')
+    const amt = Number(amount)
+    if (!valid) return setError('Please enter a positive amount.')
+    const { error } = await supabase.from('transactions').insert({ date, type, category, amount: amt, note })
+    if (error) return setError(error.message)
+    setAmount(''); setNote('')
+    refresh()
+  }
+
+  const del = async (id: string) => {
+    if (!canWrite) return
+    const { error } = await supabase.from('transactions').delete().eq('id', id)
+    if (!error) setItems((prev) => prev.filter((x) => x.id !== id))
+  }
+
+  return (
+    <section className="grid gap-6">
+      {!canWrite && (
+        <div className={cx(s.alert, 'border-amber-200 bg-amber-50 text-amber-800')}>
+          Read-only access. Ask an admin to upgrade your role to <span className="font-medium">Editor</span> if you need to add or delete transactions.
+        </div>
+      )}
+
+      <form onSubmit={add} className={cx(s.card, 'grid grid-cols-1 gap-3 p-4 md:grid-cols-6')} aria-disabled={!canWrite}>
+        <div>
+          <label className="text-sm text-slate-600">Type</label>
+          <select value={type} onChange={(e)=>setType(e.target.value as TxType)} className={s.select} disabled={!canWrite}>
+            {(['income','expense','savings'] as const).map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm text-slate-600">Date</label>
+          <input type="date" value={date} onChange={(e)=>setDate(e.target.value)} className={s.input} disabled={!canWrite}/>
+        </div>
+        <div>
+          <label className="text-sm text-slate-600">Amount</label>
+          <input type="number" step="0.01" value={amount} onChange={(e)=>setAmount(e.target.value)} className={s.input} placeholder="e.g., 1500" disabled={!canWrite}/>
+        </div>
+        <div>
+          <label className="text-sm text-slate-600">Category</label>
+          <select value={category} onChange={(e)=>setCategory(e.target.value)} className={s.select} disabled={!canWrite}>
+            {CATS[type].map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="md:col-span-2">
+          <label className="text-sm text-slate-600">Note</label>
+          <input value={note} onChange={(e)=>setNote(e.target.value)} placeholder="details…" className={s.input} disabled={!canWrite}/>
+        </div>
+        <div className="md:col-span-6 flex items-end justify-end gap-2">
+          {error && <span className="mr-auto text-sm text-rose-700">{error}</span>}
+          <button type="submit" disabled={!valid || !canWrite} className={cx(s.btn, s.primary)}>Add</button>
+        </div>
+      </form>
+
+      <div className={s.card}>
+        <div className="overflow-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr>
+                <th className={s.th}>Date</th>
+                <th className={s.th}>Type</th>
+                <th className={s.th}>Category</th>
+                <th className={s.th}>Note</th>
+                <th className={cx(s.th, 'text-right')}>Amount</th>
+                <th className={cx(s.th, 'text-right')}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td className={s.td} colSpan={6}>Loading…</td></tr>
+              ) : items.length === 0 ? (
+                <tr><td className={s.td} colSpan={6}>No entries yet.</td></tr>
+              ) : (
+                items.map(row => (
+                  <tr key={row.id} className="border-t hover:bg-slate-50/50">
+                    <td className={cx(s.td, 'whitespace-nowrap')}>{row.date}</td>
+                    <td className={s.td}>{row.type}</td>
+                    <td className={s.td}>{row.category}</td>
+                    <td className={s.td}>{row.note}</td>
+                    <td className={cx(s.td, 'text-right font-semibold')}>{fmtCurrency(Number(row.amount))}</td>
+                    <td className={cx(s.td, 'text-right')}>
+                      {canWrite ? (
+                        <button onClick={()=>del(row.id)} className={cx(s.btn, s.danger)}>Delete</button>
+                      ) : (
+                        <span className="text-slate-400">View only</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  )
+}
