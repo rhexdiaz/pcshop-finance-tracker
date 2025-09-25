@@ -8,14 +8,10 @@ type Role = 'viewer' | 'editor' | 'admin'
 export default function AdminInvite() {
   const { profile } = useSession()
 
-  // form state
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [role, setRole] = useState<Role>('viewer')
-  const [showPw, setShowPw] = useState(false)
 
-  // ui state
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -34,16 +30,13 @@ export default function AdminInvite() {
 
     try {
       const { error } = await supabase.functions.invoke('invite', {
-        body: { email, password, fullName, role },
+        body: { email, fullName, role }, // no password
       })
       if (error) throw new Error(error.message)
 
-      setMsg(
-        'User created. If email confirmations are enabled, the user will receive a verification link.'
-      )
+      setMsg('Invite sent. Ask the user to check their email and set a password from the link.')
       setFullName('')
       setEmail('')
-      setPassword('')
       setRole('viewer')
     } catch (err: any) {
       setError(err?.message || 'Invite failed')
@@ -64,10 +57,9 @@ export default function AdminInvite() {
   return (
     <section className="grid gap-4">
       <div>
-        <h1 className="text-xl font-semibold">Invite / Create User</h1>
+        <h1 className="text-xl font-semibold">Invite User</h1>
         <p className="text-sm text-slate-600">
-          Create an account and assign a role. Use <b>Viewer</b> for read-only, <b>Editor</b> for CRUD,{' '}
-          <b>Admin</b> for full control.
+          Sends a secure email. The user will set their own password after clicking the link.
         </p>
       </div>
 
@@ -77,72 +69,32 @@ export default function AdminInvite() {
       <form onSubmit={submit} className={cx(s.card, 'grid grid-cols-1 gap-3 p-6 md:grid-cols-6')}>
         <div className="md:col-span-3">
           <label className="text-sm text-slate-600">Full name</label>
-          <input
-            className={s.input}
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Juan Dela Cruz"
-            required
-          />
+          <input className={s.input} value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Juan Dela Cruz" required />
         </div>
-
         <div className="md:col-span-3">
           <label className="text-sm text-slate-600">Email</label>
-          <input
-            className={s.input}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="user@shop.com"
-            required
-          />
+          <input className={s.input} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@shop.com" required />
         </div>
-
-        <div className="md:col-span-3">
-          <label className="text-sm text-slate-600">Password</label>
-          <div className="relative">
-            <input
-              className={s.input}
-              type={showPw ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPw((v) => !v)}
-              className="absolute inset-y-0 right-2 my-1 rounded-md px-2 text-xs text-slate-600 hover:bg-slate-100"
-            >
-              {showPw ? 'Hide' : 'Show'}
-            </button>
-          </div>
-        </div>
-
         <div className="md:col-span-2">
           <label className="text-sm text-slate-600">Role</label>
-          <select
-            className={s.select}
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-          >
+          <select className={s.select} value={role} onChange={e=>setRole(e.target.value as Role)}>
             <option value="viewer">Viewer (read-only)</option>
             <option value="editor">Editor (edit/delete)</option>
             <option value="admin">Admin</option>
           </select>
         </div>
-
         <div className="md:col-span-1 flex items-end justify-end">
           <button className={cx(s.btn, s.primary, 'w-full')} type="submit" disabled={busy}>
-            {busy ? 'Creating…' : 'Create'}
+            {busy ? 'Sending…' : 'Send invite'}
           </button>
         </div>
       </form>
 
       <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>
         <ul className="list-disc pl-5 space-y-1">
-          <li>This page calls a Supabase <b>Edge Function</b> named <code>invite</code>.</li>
-          <li>Your current session must be <b>admin</b> (checked inside the function).</li>
-          <li>The service role key stays on Supabase (stored as a secret), never in the browser.</li>
+          <li>Requires Mailgun (SMTP) configured in Supabase → Authentication → Email.</li>
+          <li>Invite link redirects to <code>/set-password</code> (configured via <code>INVITE_REDIRECT_TO</code> secret).</li>
+          <li>Roles are stored in <code>profiles</code> and enforced by RLS.</li>
         </ul>
       </div>
     </section>

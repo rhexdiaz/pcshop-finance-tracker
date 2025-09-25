@@ -1,3 +1,4 @@
+// supabase/functions/invite/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { serve } from "jsr:@std/http@0.224.0/server"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -16,10 +17,12 @@ serve(async (req) => {
   }
 
   try {
-    // Supabase provides SUPABASE_URL automatically in Edge Functions
+    // Supabase injects this automatically in Edge Functions
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
-    const SERVICE_ROLE  = Deno.env.get("SERVICE_ROLE_KEY")!           // set as a secret
-    const REDIRECT_TO   = Deno.env.get("INVITE_REDIRECT_TO") ?? null  // optional
+    // You set this as a secret (note: not starting with SUPABASE_)
+    const SERVICE_ROLE  = Deno.env.get("SERVICE_ROLE_KEY")!
+    // Optional override for invite link landing page
+    const REDIRECT_TO   = Deno.env.get("INVITE_REDIRECT_TO") ?? null
 
     if (!SUPABASE_URL || !SERVICE_ROLE) {
       return new Response(JSON.stringify({ error: "Server misconfigured" }), { status: 500, headers })
@@ -40,16 +43,16 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Forbidden (admin only)" }), { status: 403, headers })
     }
 
-    // Parse input
+    // Parse input (no password here)
     const { email, fullName, role } = await req.json()
     if (!email || !fullName) {
       return new Response(JSON.stringify({ error: "Missing fields" }), { status: 400, headers })
     }
 
-    // Send invite email (creates user if not existing)
+    // Send invite email (creates user if needed)
     const { data: invited, error: invErr } = await admin.auth.admin.inviteUserByEmail(email, {
       data: { full_name: fullName },
-      redirectTo: REDIRECT_TO || undefined, // else uses Auth → Site URL
+      redirectTo: REDIRECT_TO || undefined, // else falls back to Auth → Site URL
     })
     if (invErr) throw invErr
 
