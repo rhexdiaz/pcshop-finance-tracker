@@ -22,6 +22,7 @@ const startOfYear = () => new Date(new Date().getFullYear(), 0, 1)
 
 type Row = { month: string; income: number; expenses: number; profit: number }
 type RpcRow = { month: string; income: number; expenses: number; profit: number }
+type Txn = { date: string; type: string; category: string; amount: number; note: string | null }
 
 export default function Reports() {
   const [fromDate, setFromDate] = useState(iso(startOfYear()))
@@ -29,6 +30,7 @@ export default function Reports() {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState<'summary' | 'txns' | null>(null)
 
   const fetchData = async () => {
     setLoading(true)
@@ -66,6 +68,67 @@ export default function Reports() {
     return { income, expenses, profit, avgProfit, mom }
   }, [rows])
 
+  // ---------- CSV helpers ----------
+  const csvEscape = (val: unknown) => {
+    if (val === null || val === undefined) return ''
+    const s = String(val)
+    // escape " by "", wrap in quotes if it contains delimiter, quote or newline
+    const mustQuote = /[",\n\r]/.test(s)
+    const body = s.replace(/"/g, '""')
+    return mustQuote ? `"${body}"` : body
+  }
+
+  const downloadCSV = (filename: string, rows: string[][]) => {
+    // UTF-8 BOM for Excel
+    const bom = '\uFEFF'
+    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n')
+    const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportMonthlyCSV = () => {
+    const filename = `monthly_summary_${fromDate}_to_${toDate}.csv`
+    const header = ['Month', 'Income', 'Expenses', 'Profit']
+    const data = rows.map(r => [r.month, String(r.income), String(r.expenses), String(r.profit)])
+    downloadCSV(filename, [header, ...data])
+  }
+
+  const exportTransactionsCSV = async () => {
+    try {
+      setExporting('txns')
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('date,type,category,amount,note')
+        .gte('date', fromDate)
+        .lte('date', toDate)
+        .order('date', { ascending: true })
+      if (error) throw error
+
+      const txns = (data as Txn[]) || []
+      const filename = `transactions_${fromDate}_to_${toDate}.csv`
+      const header = ['Date', 'Type', 'Category', 'Amount', 'Note']
+      const rows = txns.map(t => [
+        t.date,
+        t.type,
+        t.category ?? '',
+        String(t.amount ?? 0),
+        t.note ?? '',
+      ])
+      downloadCSV(filename, [header, ...rows])
+    } catch (e: any) {
+      setError(e?.message || 'Export failed')
+    } finally {
+      setExporting(null)
+    }
+  }
+
   return (
     <section className="grid gap-6">
       <header className={cx(s.card, 'p-4')}>
@@ -88,6 +151,27 @@ export default function Reports() {
             sub={totals.mom === 0 ? 'MoM: –' : `MoM: ${totals.mom > 0 ? '+' : ''}${fmtCurrency(totals.mom)}`}
           />
         </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            className={cx(s.btn, s.secondary)}
+            onClick={exportMonthlyCSV}
+            disabled={rows.length === 0}
+            title="Export the monthly summary table"
+          >
+            Export Monthly Summary (CSV)
+          </button>
+
+          <button
+            className={cx(s.btn, s.primary)}
+            onClick={exportTransactionsCSV}
+            disabled={exporting === 'txns'}
+            title="Export all transactions within the selected date range"
+          >
+            {exporting === 'txns' ? 'Exporting…' : 'Export Transactions (CSV)'}
+          </button>
+        </div>
+
         <div className="mt-3 text-sm text-slate-600">
           Avg monthly profit: <span className="font-medium">{fmtCurrency(totals.avgProfit)}</span>
         </div>
