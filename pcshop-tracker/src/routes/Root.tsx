@@ -61,7 +61,7 @@ export default function Root() {
             </button>
 
             <Link to="/" className="font-semibold tracking-tight">
-              {import.meta.env.VITE_APP_NAME || 'PC Shop Finance'}
+              {import.meta.env.VITE_APP_NAME || 'PCShop Finance Tracker'}
             </Link>
           </div>
 

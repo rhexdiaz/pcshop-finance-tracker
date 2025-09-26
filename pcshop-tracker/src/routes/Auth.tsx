@@ -7,28 +7,47 @@ export default function Auth() {
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resetMsg, setResetMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null); setBusy(true)
+    setError(null)
+    setResetMsg(null)
+    setBusy(true)
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) throw error
       // success: session is set and Root will render the app
     } catch (err: any) {
-      setError(err.message || 'Authentication error')
+      setError(err?.message || 'Authentication error')
     } finally {
       setBusy(false)
     }
   }
 
   const reset = async () => {
-    if (!email) return alert('Enter your email first')
-    const redirectTo = `${window.location.origin}/set-password?from=reset`
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
-    if (error) alert(error.message)
-    else alert('Check your email for the reset link.')
+    setError(null)
+    setResetMsg(null)
+    if (!email) {
+      setError('Enter your email first.')
+      return
+    }
+
+    // Use a stable base URL (works both locally and on Vercel if VITE_SITE_URL is set)
+    const SITE_URL = import.meta.env.VITE_SITE_URL || window.location.origin
+    const redirectTo = `${SITE_URL}/set-password?from=reset`
+
+    try {
+      setBusy(true)
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+      if (error) throw error
+      setResetMsg('If this email exists, we sent a reset link. Please check your inbox.')
+    } catch (e: any) {
+      setError(e?.message || 'Could not send reset email.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -43,20 +62,22 @@ export default function Auth() {
           <p className="mt-1 text-sm text-slate-600">Sign in to continue</p>
         </div>
 
-        {/* Error */}
+        {/* Messages */}
         {error && (
-          <div className={cx(s.alert, 'mb-3 border-rose-200 bg-rose-50 text-rose-700')}>
+          <div className={cx(s.alert, 'mb-3 border-rose-200 bg-rose-50 text-rose-700')} role="alert" aria-live="polite">
             {error}
+          </div>
+        )}
+        {resetMsg && (
+          <div className={cx(s.alert, 'mb-3 border-emerald-200 bg-emerald-50 text-emerald-800')} role="status" aria-live="polite">
+            {resetMsg}
           </div>
         )}
 
         {/* Form */}
         <form
           onSubmit={signIn}
-          className={cx(
-            s.card,
-            'p-5 sm:p-6 space-y-3'
-          )}
+          className={cx(s.card, 'p-5 sm:p-6 space-y-3')}
           aria-busy={busy}
         >
           <div>
@@ -102,10 +123,7 @@ export default function Auth() {
             </div>
           </div>
 
-          <button
-            disabled={busy}
-            className={cx(s.btn, s.primary, 'w-full')}
-          >
+          <button disabled={busy} className={cx(s.btn, s.primary, 'w-full')}>
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
 
