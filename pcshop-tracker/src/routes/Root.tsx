@@ -4,6 +4,8 @@ import { useSession } from '../lib/session'
 import { supabase } from '../lib/supabaseClient'
 import { cx, styles as s } from '../ui'
 
+type NavItem = { to: string; label: string; admin?: boolean }
+
 export default function Root() {
   const { session, profile } = useSession()
   const isAdmin = profile?.role === 'admin'
@@ -19,12 +21,15 @@ export default function Root() {
       session?.user?.email ??
       '')
 
-  const nav = [
-    { to: '/', label: 'Dashboard' },
-    { to: '/transactions', label: 'Transactions' },
-    { to: '/bills', label: 'Bills' },
-    { to: '/savings', label: 'Savings' },
-    { to: '/reports', label: 'Reports' },
+  const nav: NavItem[] = [
+    { to: '/',              label: 'Dashboard' },
+    { to: '/transactions',  label: 'Transactions' },
+    { to: '/bills',         label: 'Bills' },
+    { to: '/savings',       label: 'Savings' },
+    { to: '/reports',       label: 'Reports' },
+    // admin-only items:
+    { to: '/admin/invite',  label: 'Invite', admin: true },
+    { to: '/audit',         label: 'Audit',  admin: true },
   ]
 
   const NavBtn = ({ to, label }: { to: string; label: string }) => (
@@ -67,10 +72,11 @@ export default function Root() {
 
           {/* Desktop nav */}
           <nav className="hidden items-center gap-2 md:flex">
-            {nav.map((n) => (
-              <NavBtn key={n.to} to={n.to} label={n.label} />
-            ))}
-            {isAdmin && <NavBtn to="/admin/invite" label="Invite" />}
+            {nav
+              .filter(item => !item.admin || isAdmin)
+              .map((n) => (
+                <NavBtn key={n.to} to={n.to} label={n.label} />
+              ))}
 
             <span className="ml-2 hidden items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-white/90 ring-1 ring-white/20 md:inline-flex">
               {displayName || 'Account'}
@@ -94,35 +100,23 @@ export default function Root() {
         <div className={cx('border-t border-white/10 md:hidden', open ? 'block' : 'hidden')}>
           <div className="mx-auto max-w-5xl px-4 pb-3">
             <nav className="grid gap-1">
-              {nav.map((n) => (
-                <NavLink
-                  key={n.to}
-                  to={n.to}
-                  end={n.to === '/'}
-                  className={({ isActive }) =>
-                    cx(
-                      'rounded-lg px-3 py-2 text-sm font-medium hover:bg-white/10',
-                      isActive && 'bg-white/15 ring-1 ring-white/30'
-                    )
-                  }
-                >
-                  {n.label}
-                </NavLink>
-              ))}
-
-              {isAdmin && (
-                <NavLink
-                  to="/admin/invite"
-                  className={({ isActive }) =>
-                    cx(
-                      'rounded-lg px-3 py-2 text-sm font-medium hover:bg-white/10',
-                      isActive && 'bg-white/15 ring-1 ring-white/30'
-                    )
-                  }
-                >
-                  Invite
-                </NavLink>
-              )}
+              {nav
+                .filter(item => !item.admin || isAdmin)
+                .map((n) => (
+                  <NavLink
+                    key={n.to}
+                    to={n.to}
+                    end={n.to === '/'}
+                    className={({ isActive }) =>
+                      cx(
+                        'rounded-lg px-3 py-2 text-sm font-medium hover:bg-white/10',
+                        isActive && 'bg-white/15 ring-1 ring-white/30'
+                      )
+                    }
+                  >
+                    {n.label}
+                  </NavLink>
+                ))}
 
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-white/10 px-3 py-2 text-xs">
