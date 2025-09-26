@@ -5,18 +5,19 @@ import { styles as s, cx } from '../ui'
 
 type LogRow = {
   id: string
+  created_at: string
   table_name: string
-  row_pk: string
   action: 'INSERT' | 'UPDATE' | 'DELETE'
-  actor: string | null
+  row_id: string | null
   actor_email: string | null
-  at: string
-  diff: any
+  // changes is currently null in the view, keep for future-proofing
+  changes?: Record<string, { old: unknown; new: unknown }> | null
 }
 
 export default function AuditLog() {
   const { profile } = useSession()
   const isAdmin = profile?.role === 'admin'
+
   const [rows, setRows] = useState<LogRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -26,24 +27,45 @@ export default function AuditLog() {
     const fetchIt = async () => {
       setLoading(true)
       setError(null)
+      // IMPORTANT: read from the view `audit_logs` and use correct column names
       const { data, error } = await supabase
-        .from('audit_log')
-        .select('id, table_name, row_pk, action, actor, actor_email, at, diff')
-        .order('at', { ascending: false })
+        .from('audit_logs') // <— the view we created
+        .select('id, created_at, table_name, action, row_id, actor_email, changes')
+        .order('created_at', { ascending: false })
         .limit(300)
+
       setLoading(false)
       if (error) return setError(error.message)
       setRows((data as any) || [])
     }
+
     fetchIt()
+
+    // (Optional) realtime updates from the underlying table
+    const channel = supabase
+      .channel('audit-log-feed')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'audit_log' }, // table (singular)
+        () => fetchIt()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   if (!isAdmin) {
-    return <div className={cx(s.alert, 'm-4 border-rose-200 bg-rose-50 text-rose-700')}>Admins only.</div>
+    return (
+      <div className={cx(s.alert, 'm-4 border-rose-200 bg-rose-50 text-rose-700')}>
+        Admins only.
+      </div>
+    )
   }
 
-  const filtered = rows.filter(r => {
-    const hay = `${r.table_name} ${r.action} ${r.actor_email ?? ''} ${r.row_pk}`.toLowerCase()
+  const filtered = rows.filter((r) => {
+    const hay = `${r.table_name} ${r.action} ${r.actor_email ?? ''} ${r.row_id ?? ''}`.toLowerCase()
     return hay.includes(q.toLowerCase())
   })
 
@@ -53,10 +75,10 @@ export default function AuditLog() {
         <h1 className="text-lg font-semibold">Audit Log</h1>
         <input
           value={q}
-          onChange={(e)=>setQ(e.target.value)}
+          onChange={(e) => setQ(e.target.value)}
           placeholder="Search table, action, email…"
           className={s.input}
-          style={{ maxWidth: 280 }}
+          style={{ maxWidth: 320 }}
         />
       </header>
 
@@ -75,30 +97,64 @@ export default function AuditLog() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className={s.td} colSpan={6}>Loading…</td></tr>
+                <tr>
+                  <td className={s.td} colSpan={6}>
+                    Loading…
+                  </td>
+                </tr>
               ) : error ? (
-                <tr><td className={s.td} colSpan={6}>⚠ {error}</td></tr>
+                <tr>
+                  <td className={s.td} colSpan={6}>
+                    ⚠ {error}
+                  </td>
+                </tr>
               ) : filtered.length === 0 ? (
-                <tr><td className={s.td} colSpan={6}>No entries.</td></tr>
+                <tr>
+                  <td className={s.td} colSpan={6}>
+                    No entries.
+                  </td>
+                </tr>
               ) : (
                 filtered.map((r) => (
                   <tr key={r.id} className="border-t align-top">
-                    <td className={s.td}>{new Date(r.at).toLocaleString()}</td>
+                    <td className={s.td}>{new Date(r.created_at).toLocaleString()}</td>
                     <td className={s.td}>{r.table_name}</td>
-                    <td className={cx(s.td, r.action === 'DELETE' ? 'text-rose-700' : r.action === 'UPDATE' ? 'text-amber-700' : 'text-emerald-700')}>
+                    <td
+                      className={cx(
+                        s.td,
+                        r.action === 'DELETE'
+                          ? 'text-rose-700'
+                          : r.action === 'UPDATE'
+                          ? 'text-amber-700'
+                          : 'text-emerald-700'
+                      )}
+                    >
                       {r.action}
                     </td>
-                    <td className={s.td}><code className="rounded bg-slate-50 px-1">{r.row_pk}</code></td>
+                    <td className={s.td}>
+                      {r.row_id ? (
+                        <code className="rounded bg-slate-50 px-1">{r.row_id}</code>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
                     <td className={s.td}>{r.actor_email ?? '—'}</td>
                     <td className={s.td}>
-                      {r.action === 'UPDATE' && r.diff && Object.keys(r.diff).length > 0 ? (
+                      {r.action === 'UPDATE' && r.changes && Object.keys(r.changes).length > 0 ? (
                         <div className="space-y-1">
-                          {Object.entries(r.diff).map(([k, v]: any) => (
-                            <div key={k} className="rounded border border-slate-200 bg-white p-1 text-xs">
+                          {Object.entries(r.changes).map(([k, v]: any) => (
+                            <div
+                              key={k}
+                              className="rounded border border-slate-200 bg-white p-1 text-xs"
+                            >
                               <div className="font-medium">{k}</div>
                               <div className="grid grid-cols-2 gap-2">
-                                <div className="text-slate-600">old: <code>{JSON.stringify(v.old)}</code></div>
-                                <div className="text-slate-800">new: <code>{JSON.stringify(v.new)}</code></div>
+                                <div className="text-slate-600">
+                                  old: <code>{JSON.stringify(v.old)}</code>
+                                </div>
+                                <div className="text-slate-800">
+                                  new: <code>{JSON.stringify(v.new)}</code>
+                                </div>
                               </div>
                             </div>
                           ))}
