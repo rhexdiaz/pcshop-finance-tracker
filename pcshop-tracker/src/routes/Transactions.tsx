@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatISO } from 'date-fns'
 import { supabase } from '../lib/supabaseClient'
 import { fmtCurrency } from '../lib/currency'
@@ -10,7 +10,7 @@ type Tx = { id: string; date: string; type: TxType; category: string; amount: nu
 
 const CATS: Record<TxType, string[]> = {
   income: ['PisoNet', 'Water Refilling', 'Printing', 'Other'],
-  expense: ['Salaries', 'Foods', 'Business Permit', 'Other'],
+  expense: ['Salaries', 'Foods',  'Business Permit', 'Other'],
   savings: ['Emergency Fund', 'Store Upgrade', 'Marketing Fund', 'New Tools', 'Other'],
 }
 
@@ -26,6 +26,9 @@ export default function Transactions() {
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // NEW: search
+  const [q, setQ] = useState('')
 
   const valid = Number(amount) > 0 && !!date && !!category
 
@@ -61,6 +64,16 @@ export default function Transactions() {
     const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (!error) setItems((prev) => prev.filter((x) => x.id !== id))
   }
+
+  // Client-side filtering (category, note, type)
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase()
+    if (!term) return items
+    return items.filter((t) => {
+      const hay = `${t.category} ${t.note ?? ''} ${t.type}`.toLowerCase()
+      return hay.includes(term)
+    })
+  }, [items, q])
 
   return (
     <section className="grid gap-6">
@@ -108,14 +121,25 @@ export default function Transactions() {
         </div>
       </form>
 
+      {/* NEW: Search bar */}
+      <div className={cx(s.card, 'p-3 sm:p-4')}>
+        <label className="mb-1 block text-sm text-slate-600">Search</label>
+        <input
+          className={s.input}
+          value={q}
+          onChange={(e)=>setQ(e.target.value)}
+          placeholder="Find by category, note, or type…"
+        />
+      </div>
+
       {/* ===== Mobile cards ===== */}
       <div className="grid gap-3 md:hidden">
         {loading ? (
           <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>Loading…</div>
-        ) : items.length === 0 ? (
-          <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>No entries yet.</div>
+        ) : filtered.length === 0 ? (
+          <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>No matching entries.</div>
         ) : (
-          items.map((row) => (
+          filtered.map((row) => (
             <div key={row.id} className={cx(s.card, 'p-3')}>
               <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-medium">{row.category}</div>
@@ -164,17 +188,20 @@ export default function Transactions() {
             <tbody>
               {loading ? (
                 <tr><td className={s.td} colSpan={6}>Loading…</td></tr>
-              ) : items.length === 0 ? (
-                <tr><td className={s.td} colSpan={6}>No entries yet.</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td className={s.td} colSpan={6}>No matching entries.</td></tr>
               ) : (
-                items.map(row => (
+                filtered.map(row => (
                   <tr key={row.id} className="border-t hover:bg-slate-50/50">
                     <td className={cx(s.td, 'whitespace-nowrap')}>{row.date}</td>
                     <td className={s.td}>{row.type}</td>
                     <td className={s.td}>{row.category}</td>
                     <td className={s.td}>{row.note}</td>
-                    <td className={cx(s.td, 'text-right font-semibold',
-                      row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700')}>
+                    <td className={cx(
+                      s.td,
+                      'text-right font-semibold',
+                      row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700'
+                    )}>
                       {fmtCurrency(Number(row.amount))}
                     </td>
                     <td className={cx(s.td, 'text-right')}>
