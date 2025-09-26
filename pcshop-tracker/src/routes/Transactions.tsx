@@ -10,7 +10,7 @@ type Tx = { id: string; date: string; type: TxType; category: string; amount: nu
 
 const CATS: Record<TxType, string[]> = {
   income: ['PisoNet', 'Water Refilling', 'Printing', 'Other'],
-  expense: ['Salaries', 'Foods',  'Business Permit', 'Other'],
+  expense: ['Salaries', 'Foods', 'Business Permit', 'Other'],
   savings: ['Emergency Fund', 'Store Upgrade', 'Marketing Fund', 'New Tools', 'Other'],
 }
 
@@ -27,8 +27,13 @@ export default function Transactions() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // NEW: search
+  // Search
   const [q, setQ] = useState('')
+
+  // NEW: Inline amount edit state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editAmount, setEditAmount] = useState<string>('')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const valid = Number(amount) > 0 && !!date && !!category
 
@@ -63,6 +68,45 @@ export default function Transactions() {
     if (!canWrite) return
     const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (!error) setItems((prev) => prev.filter((x) => x.id !== id))
+  }
+
+  // NEW: start/cancel/save inline edit
+  const startEdit = (row: Tx) => {
+    if (!canWrite) return
+    setEditingId(row.id)
+    setEditAmount(String(row.amount ?? ''))
+    setError(null)
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditAmount('')
+  }
+
+  const saveEdit = async (row: Tx) => {
+    if (!canWrite) return
+    const newAmt = Number(editAmount)
+    if (!Number.isFinite(newAmt) || newAmt <= 0) {
+      setError('Amount must be a positive number.')
+      return
+    }
+
+    setSavingEdit(true)
+    const prev = items
+    // optimistic render
+    setItems(prev => prev.map(r => r.id === row.id ? { ...r, amount: newAmt } : r))
+
+    const { error } = await supabase.from('transactions').update({ amount: newAmt }).eq('id', row.id)
+    setSavingEdit(false)
+
+    if (error) {
+      setError(error.message)
+      setItems(prev) // rollback
+      return
+    }
+
+    setEditingId(null)
+    setEditAmount('')
   }
 
   // Client-side filtering (category, note, type)
@@ -121,7 +165,7 @@ export default function Transactions() {
         </div>
       </form>
 
-      {/* NEW: Search bar */}
+      {/* Search bar */}
       <div className={cx(s.card, 'p-3 sm:p-4')}>
         <label className="mb-1 block text-sm text-slate-600">Search</label>
         <input
@@ -139,35 +183,69 @@ export default function Transactions() {
         ) : filtered.length === 0 ? (
           <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>No matching entries.</div>
         ) : (
-          filtered.map((row) => (
-            <div key={row.id} className={cx(s.card, 'p-3')}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium">{row.category}</div>
-                <div
-                  className={cx(
-                    'text-sm font-semibold',
-                    row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700'
+          filtered.map((row) => {
+            const isEditing = editingId === row.id
+            return (
+              <div key={row.id} className={cx(s.card, 'p-3')}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">{row.category}</div>
+                  {isEditing ? (
+                    <input
+                      className={cx(s.input, 'w-28 text-right')}
+                      type="number"
+                      step="0.01"
+                      value={editAmount}
+                      onChange={(e)=>setEditAmount(e.target.value)}
+                      autoFocus
+                    />
+                  ) : (
+                    <div
+                      className={cx(
+                        'text-sm font-semibold',
+                        row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700'
+                      )}
+                    >
+                      {fmtCurrency(Number(row.amount))}
+                    </div>
                   )}
-                >
-                  {fmtCurrency(Number(row.amount))}
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {row.date} • {row.type}
+                </div>
+                {row.note && <div className="mt-1 text-sm">{row.note}</div>}
+
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {canWrite ? (
+                    isEditing ? (
+                      <>
+                        <button
+                          onClick={()=>saveEdit(row)}
+                          className={cx(s.btn, s.primary, 'w-full')}
+                          disabled={savingEdit}
+                        >
+                          {savingEdit ? 'Saving…' : 'Save'}
+                        </button>
+                        <button onClick={cancelEdit} className={cx(s.btn, s.secondary, 'w-full')}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={()=>startEdit(row)} className={cx(s.btn, s.secondary, 'w-full')}>
+                          Edit
+                        </button>
+                        <button onClick={()=>del(row.id)} className={cx(s.btn, s.danger, 'w-full')}>
+                          Delete
+                        </button>
+                      </>
+                    )
+                  ) : (
+                    <div className="col-span-2 text-right text-slate-400">View only</div>
+                  )}
                 </div>
               </div>
-              <div className="mt-1 text-xs text-slate-600">
-                {row.date} • {row.type}
-              </div>
-              {row.note && <div className="mt-1 text-sm">{row.note}</div>}
-
-              <div className="mt-2">
-                {canWrite ? (
-                  <button onClick={() => del(row.id)} className={cx(s.btn, s.danger, 'w-full')}>
-                    Delete
-                  </button>
-                ) : (
-                  <div className="text-right text-slate-400">View only</div>
-                )}
-              </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 
@@ -191,28 +269,70 @@ export default function Transactions() {
               ) : filtered.length === 0 ? (
                 <tr><td className={s.td} colSpan={6}>No matching entries.</td></tr>
               ) : (
-                filtered.map(row => (
-                  <tr key={row.id} className="border-t hover:bg-slate-50/50">
-                    <td className={cx(s.td, 'whitespace-nowrap')}>{row.date}</td>
-                    <td className={s.td}>{row.type}</td>
-                    <td className={s.td}>{row.category}</td>
-                    <td className={s.td}>{row.note}</td>
-                    <td className={cx(
-                      s.td,
-                      'text-right font-semibold',
-                      row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700'
-                    )}>
-                      {fmtCurrency(Number(row.amount))}
-                    </td>
-                    <td className={cx(s.td, 'text-right')}>
-                      {canWrite ? (
-                        <button onClick={()=>del(row.id)} className={cx(s.btn, s.danger)}>Delete</button>
-                      ) : (
-                        <span className="text-slate-400">View only</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                filtered.map(row => {
+                  const isEditing = editingId === row.id
+                  return (
+                    <tr key={row.id} className="border-t hover:bg-slate-50/50">
+                      <td className={cx(s.td, 'whitespace-nowrap')}>{row.date}</td>
+                      <td className={s.td}>{row.type}</td>
+                      <td className={s.td}>{row.category}</td>
+                      <td className={s.td}>{row.note}</td>
+
+                      <td className={cx(s.td, 'text-right align-middle')}>
+                        {isEditing ? (
+                          <input
+                            className={cx(s.input, 'w-28 text-right')}
+                            type="number"
+                            step="0.01"
+                            value={editAmount}
+                            onChange={(e)=>setEditAmount(e.target.value)}
+                            autoFocus
+                          />
+                        ) : (
+                          <span
+                            className={cx(
+                              'font-semibold',
+                              row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700'
+                            )}
+                          >
+                            {fmtCurrency(Number(row.amount))}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className={cx(s.td, 'text-right')}>
+                        {canWrite ? (
+                          isEditing ? (
+                            <div className="inline-flex gap-2">
+                              <button
+                                onClick={()=>saveEdit(row)}
+                                disabled={savingEdit}
+                                className={cx(s.btn, s.primary)}
+                                type="button"
+                              >
+                                {savingEdit ? 'Saving…' : 'Save'}
+                              </button>
+                              <button onClick={cancelEdit} type="button" className={cx(s.btn, s.secondary)}>
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="inline-flex gap-2">
+                              <button onClick={()=>startEdit(row)} type="button" className={cx(s.btn, s.secondary)}>
+                                Edit
+                              </button>
+                              <button onClick={()=>del(row.id)} className={cx(s.btn, s.danger)} type="button">
+                                Delete
+                              </button>
+                            </div>
+                          )
+                        ) : (
+                          <span className="text-slate-400">View only</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
