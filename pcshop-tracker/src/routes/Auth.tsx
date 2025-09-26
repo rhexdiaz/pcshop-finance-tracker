@@ -57,7 +57,7 @@ export default function Auth() {
         <div className="mb-4 text-center">
           <div className="text-xs tracking-widest text-indigo-600">WELCOME</div>
           <h1 className="mt-1 text-2xl font-semibold">
-            {import.meta.env.VITE_APP_NAME || 'PC Shop Finance'}
+            {import.meta.env.VITE_APP_NAME || 'PCShop Finance Tracker'}
           </h1>
           <p className="mt-1 text-sm text-slate-600">Sign in to continue</p>
         </div>
