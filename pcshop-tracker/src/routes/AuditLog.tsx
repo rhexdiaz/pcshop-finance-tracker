@@ -8,9 +8,8 @@ type LogRow = {
   created_at: string
   table_name: string
   action: 'INSERT' | 'UPDATE' | 'DELETE'
-  row_id: string | null
+  row_id: string | null              // kept for future use, not shown
   actor_email: string | null
-  // changes is currently null in the view, keep for future-proofing
   changes?: Record<string, { old: unknown; new: unknown }> | null
 }
 
@@ -27,9 +26,10 @@ export default function AuditLog() {
     const fetchIt = async () => {
       setLoading(true)
       setError(null)
-      // IMPORTANT: read from the view `audit_logs` and use correct column names
+
+      // read from the view `audit_logs`
       const { data, error } = await supabase
-        .from('audit_logs') // <— the view we created
+        .from('audit_logs')
         .select('id, created_at, table_name, action, row_id, actor_email, changes')
         .order('created_at', { ascending: false })
         .limit(300)
@@ -41,12 +41,12 @@ export default function AuditLog() {
 
     fetchIt()
 
-    // (Optional) realtime updates from the underlying table
+    // optional realtime refresh
     const channel = supabase
       .channel('audit-log-feed')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'audit_log' }, // table (singular)
+        { event: '*', schema: 'public', table: 'audit_log' },
         () => fetchIt()
       )
       .subscribe()
@@ -64,8 +64,9 @@ export default function AuditLog() {
     )
   }
 
+  // Removed row_id from the search string
   const filtered = rows.filter((r) => {
-    const hay = `${r.table_name} ${r.action} ${r.actor_email ?? ''} ${r.row_id ?? ''}`.toLowerCase()
+    const hay = `${r.table_name} ${r.action} ${r.actor_email ?? ''}`.toLowerCase()
     return hay.includes(q.toLowerCase())
   })
 
@@ -84,13 +85,13 @@ export default function AuditLog() {
 
       <div className={s.card}>
         <div className="overflow-auto">
-          <table className="w-full min-w-[880px] text-sm">
+          {/* narrower now that Row ID is gone */}
+          <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr>
                 <th className={s.th}>Time</th>
                 <th className={s.th}>Table</th>
                 <th className={s.th}>Action</th>
-                <th className={s.th}>Row ID</th>
                 <th className={s.th}>Actor (email)</th>
                 <th className={s.th}>Changes</th>
               </tr>
@@ -98,21 +99,15 @@ export default function AuditLog() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td className={s.td} colSpan={6}>
-                    Loading…
-                  </td>
+                  <td className={s.td} colSpan={5}>Loading…</td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td className={s.td} colSpan={6}>
-                    ⚠ {error}
-                  </td>
+                  <td className={s.td} colSpan={5}>⚠ {error}</td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td className={s.td} colSpan={6}>
-                    No entries.
-                  </td>
+                  <td className={s.td} colSpan={5}>No entries.</td>
                 </tr>
               ) : (
                 filtered.map((r) => (
@@ -131,22 +126,12 @@ export default function AuditLog() {
                     >
                       {r.action}
                     </td>
-                    <td className={s.td}>
-                      {r.row_id ? (
-                        <code className="rounded bg-slate-50 px-1">{r.row_id}</code>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
                     <td className={s.td}>{r.actor_email ?? '—'}</td>
                     <td className={s.td}>
                       {r.action === 'UPDATE' && r.changes && Object.keys(r.changes).length > 0 ? (
                         <div className="space-y-1">
                           {Object.entries(r.changes).map(([k, v]: any) => (
-                            <div
-                              key={k}
-                              className="rounded border border-slate-200 bg-white p-1 text-xs"
-                            >
+                            <div key={k} className="rounded border border-slate-200 bg-white p-1 text-xs">
                               <div className="font-medium">{k}</div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div className="text-slate-600">
