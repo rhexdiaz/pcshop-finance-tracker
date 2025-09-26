@@ -180,15 +180,49 @@ export default function Reports() {
       <div className={cx(s.card, 'p-4')}>
         <div className="h-56 w-full md:h-80">
           <ResponsiveContainer>
-            <ComposedChart data={rows}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis tickFormatter={(v) => fmtCurrency(Number(v))} />
-              <Tooltip formatter={(val: any) => fmtCurrency(Number(val))} />
-              <Legend />
-              <Bar dataKey="income" name="Income" />
-              <Bar dataKey="expenses" name="Expenses" />
-              <Line type="monotone" dataKey="profit" name="Profit" />
+            <ComposedChart data={rows} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+              {/* Gradients */}
+              <defs>
+                <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#34d399" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="#34d399" stopOpacity={0.55} />
+                </linearGradient>
+                <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#fb7185" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="#fb7185" stopOpacity={0.55} />
+                </linearGradient>
+              </defs>
+
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 12 }} />
+              <YAxis
+                tick={{ fill: '#64748b', fontSize: 12 }}
+                tickFormatter={(v) => fmtCurrency(Number(v))}
+              />
+
+              <Tooltip
+                contentStyle={{ borderRadius: 12, borderColor: '#e2e8f0' }}
+                labelStyle={{ color: '#0f172a', fontWeight: 600 }}
+                formatter={(val: any, name) => [fmtCurrency(Number(val)), name]}
+              />
+              <Legend
+                wrapperStyle={{ paddingTop: 6 }}
+                formatter={(val: string) => (
+                  <span style={{ color: '#334155' }}>{val}</span>
+                )}
+              />
+
+              <Bar dataKey="expenses" name="Expenses" fill="url(#expenseGrad)" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="income" name="Income" fill="url(#incomeGrad)" radius={[6, 6, 0, 0]} />
+              <Line
+                type="monotone"
+                dataKey="profit"
+                name="Profit"
+                stroke="#6366f1"
+                strokeWidth={3}
+                dot={{ r: 3, fill: '#6366f1' }}
+                activeDot={{ r: 5 }}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -283,8 +317,8 @@ function Kpi({
   const toneCls = tone === 'pos'
     ? 'border-emerald-200 bg-emerald-50'
     : tone === 'neg'
-    ? 'border-rose-200 bg-rose-50'
-    : 'border-slate-200 bg-white'
+      ? 'border-rose-200 bg-rose-50'
+      : 'border-slate-200 bg-white'
   return (
     <div className={cx('rounded-2xl p-3 shadow-sm ring-1 ring-black/5', toneCls)}>
       <div className="text-xs text-slate-600">{title}</div>
