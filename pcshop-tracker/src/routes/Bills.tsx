@@ -40,6 +40,9 @@ export default function Bills() {
   const [recurring, setRecurring] = useState(false)
   const [recurDay, setRecurDay] = useState<number | ''>('')
 
+  // NEW: delete busy state
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
   const refresh = async () => {
     const { data, error } = await supabase
       .from('bills')
@@ -81,7 +84,7 @@ export default function Bills() {
       // Create expense only if not yet linked
       if (!txnId) {
         const today = new Date().toISOString().slice(0, 10)
-        const note = `Bill paid: ${bill.category}` // clean note
+        const note = `Bill paid: ${bill.category}`
         const { data, error } = await supabase
           .from('transactions')
           .insert({
@@ -137,13 +140,32 @@ export default function Bills() {
     }
   }
 
-  const del = async (id: string, transaction_id: string | null) => {
+  // UPDATED: confirm before deleting, also disable button while deleting
+  const del = async (bill: Bill) => {
     if (!canWrite) return
-    if (transaction_id) {
-      await supabase.from('transactions').delete().eq('id', transaction_id)
+
+    const warnLinked = bill.transaction_id
+      ? '\n\nNote: This will also delete the linked expense in Transactions.'
+      : ''
+
+    const ok = window.confirm(
+      `Delete this bill?\n\n` +
+      `Category: ${bill.category}\n` +
+      `Due date: ${bill.due_date}\n` +
+      `Amount:  ${fmtCurrency(Number(bill.amount))}${warnLinked}\n\n` +
+      `This cannot be undone.`
+    )
+    if (!ok) return
+
+    setDeletingId(bill.id)
+
+    if (bill.transaction_id) {
+      await supabase.from('transactions').delete().eq('id', bill.transaction_id)
     }
-    await supabase.from('bills').delete().eq('id', id)
-    setItems(prev => prev.filter(x => x.id !== id))
+    await supabase.from('bills').delete().eq('id', bill.id)
+
+    setDeletingId(null)
+    setItems(prev => prev.filter(x => x.id !== bill.id))
   }
 
   return (
@@ -254,8 +276,12 @@ export default function Bills() {
                     <button onClick={() => togglePaid(b)} className={cx(s.btn, s.secondary)}>
                       {b.paid ? 'Mark Unpaid' : 'Mark Paid'}
                     </button>
-                    <button onClick={() => del(b.id, b.transaction_id)} className={cx(s.btn, s.danger)}>
-                      Delete
+                    <button
+                      onClick={() => del(b)}
+                      className={cx(s.btn, s.danger)}
+                      disabled={deletingId === b.id}
+                    >
+                      {deletingId === b.id ? 'Deleting…' : 'Delete'}
                     </button>
                   </>
                 ) : (
@@ -300,8 +326,12 @@ export default function Bills() {
                           <button onClick={() => togglePaid(b)} className={cx(s.btn, s.secondary)}>
                             {b.paid ? 'Mark Unpaid' : 'Mark Paid'}
                           </button>
-                          <button onClick={() => del(b.id, b.transaction_id)} className={cx(s.btn, s.danger)}>
-                            Delete
+                          <button
+                            onClick={() => del(b)}
+                            className={cx(s.btn, s.danger)}
+                            disabled={deletingId === b.id}
+                          >
+                            {deletingId === b.id ? 'Deleting…' : 'Delete'}
                           </button>
                         </>
                       ) : (

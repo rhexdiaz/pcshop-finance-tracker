@@ -30,10 +30,13 @@ export default function Transactions() {
   // Search
   const [q, setQ] = useState('')
 
-  // NEW: Inline amount edit state
+  // Inline edit amount
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editAmount, setEditAmount] = useState<string>('')
   const [savingEdit, setSavingEdit] = useState(false)
+
+  // NEW: delete busy state
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const valid = Number(amount) > 0 && !!date && !!category
 
@@ -64,25 +67,33 @@ export default function Transactions() {
     refresh()
   }
 
-  const del = async (id: string) => {
+  // UPDATED: ask for confirmation before deleting
+  const del = async (row: Tx) => {
     if (!canWrite) return
-    const { error } = await supabase.from('transactions').delete().eq('id', id)
-    if (!error) setItems((prev) => prev.filter((x) => x.id !== id))
+    const ok = window.confirm(
+      `Delete this ${row.type}?\n\n` +
+      `Category: ${row.category}\n` +
+      `Date:     ${row.date}\n` +
+      `Amount:   ${fmtCurrency(Number(row.amount))}\n\n` +
+      `This cannot be undone.`
+    )
+    if (!ok) return
+
+    setDeletingId(row.id)
+    const { error } = await supabase.from('transactions').delete().eq('id', row.id)
+    setDeletingId(null)
+    if (error) return setError(error.message)
+    setItems(prev => prev.filter(x => x.id !== row.id))
   }
 
-  // NEW: start/cancel/save inline edit
+  // Inline amount edit
   const startEdit = (row: Tx) => {
     if (!canWrite) return
     setEditingId(row.id)
     setEditAmount(String(row.amount ?? ''))
     setError(null)
   }
-
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditAmount('')
-  }
-
+  const cancelEdit = () => { setEditingId(null); setEditAmount('') }
   const saveEdit = async (row: Tx) => {
     if (!canWrite) return
     const newAmt = Number(editAmount)
@@ -90,33 +101,25 @@ export default function Transactions() {
       setError('Amount must be a positive number.')
       return
     }
-
     setSavingEdit(true)
     const prev = items
-    // optimistic render
     setItems(prev => prev.map(r => r.id === row.id ? { ...r, amount: newAmt } : r))
-
     const { error } = await supabase.from('transactions').update({ amount: newAmt }).eq('id', row.id)
     setSavingEdit(false)
-
     if (error) {
       setError(error.message)
-      setItems(prev) // rollback
+      setItems(prev)
       return
     }
-
     setEditingId(null)
     setEditAmount('')
   }
 
-  // Client-side filtering (category, note, type)
+  // Filter
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
     if (!term) return items
-    return items.filter((t) => {
-      const hay = `${t.category} ${t.note ?? ''} ${t.type}`.toLowerCase()
-      return hay.includes(term)
-    })
+    return items.filter(t => `${t.category} ${t.note ?? ''} ${t.type}`.toLowerCase().includes(term))
   }, [items, q])
 
   return (
@@ -128,11 +131,7 @@ export default function Transactions() {
       )}
 
       {/* Form */}
-      <form
-        onSubmit={add}
-        className={cx(s.card, 'grid grid-cols-1 gap-3 p-4 md:grid-cols-6')}
-        aria-disabled={!canWrite}
-      >
+      <form onSubmit={add} className={cx(s.card, 'grid grid-cols-1 gap-3 p-4 md:grid-cols-6')} aria-disabled={!canWrite}>
         <div>
           <label className="text-sm text-slate-600">Type</label>
           <select value={type} onChange={(e)=>setType(e.target.value as TxType)} className={s.select} disabled={!canWrite}>
@@ -165,18 +164,13 @@ export default function Transactions() {
         </div>
       </form>
 
-      {/* Search bar */}
+      {/* Search */}
       <div className={cx(s.card, 'p-3 sm:p-4')}>
         <label className="mb-1 block text-sm text-slate-600">Search</label>
-        <input
-          className={s.input}
-          value={q}
-          onChange={(e)=>setQ(e.target.value)}
-          placeholder="Find by category, note, or type…"
-        />
+        <input className={s.input} value={q} onChange={(e)=>setQ(e.target.value)} placeholder="Find by category, note, or type…"/>
       </div>
 
-      {/* ===== Mobile cards ===== */}
+      {/* Mobile cards */}
       <div className="grid gap-3 md:hidden">
         {loading ? (
           <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>Loading…</div>
@@ -192,50 +186,39 @@ export default function Transactions() {
                   {isEditing ? (
                     <input
                       className={cx(s.input, 'w-28 text-right')}
-                      type="number"
-                      step="0.01"
+                      type="number" step="0.01"
                       value={editAmount}
                       onChange={(e)=>setEditAmount(e.target.value)}
                       autoFocus
                     />
                   ) : (
-                    <div
-                      className={cx(
-                        'text-sm font-semibold',
-                        row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700'
-                      )}
-                    >
+                    <div className={cx('text-sm font-semibold',
+                      row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700')}>
                       {fmtCurrency(Number(row.amount))}
                     </div>
                   )}
                 </div>
-                <div className="mt-1 text-xs text-slate-600">
-                  {row.date} • {row.type}
-                </div>
+                <div className="mt-1 text-xs text-slate-600">{row.date} • {row.type}</div>
                 {row.note && <div className="mt-1 text-sm">{row.note}</div>}
 
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   {canWrite ? (
                     isEditing ? (
                       <>
-                        <button
-                          onClick={()=>saveEdit(row)}
-                          className={cx(s.btn, s.primary, 'w-full')}
-                          disabled={savingEdit}
-                        >
+                        <button onClick={()=>saveEdit(row)} className={cx(s.btn, s.primary, 'w-full')} disabled={savingEdit}>
                           {savingEdit ? 'Saving…' : 'Save'}
                         </button>
-                        <button onClick={cancelEdit} className={cx(s.btn, s.secondary, 'w-full')}>
-                          Cancel
-                        </button>
+                        <button onClick={cancelEdit} className={cx(s.btn, s.secondary, 'w-full')}>Cancel</button>
                       </>
                     ) : (
                       <>
-                        <button onClick={()=>startEdit(row)} className={cx(s.btn, s.secondary, 'w-full')}>
-                          Edit
-                        </button>
-                        <button onClick={()=>del(row.id)} className={cx(s.btn, s.danger, 'w-full')}>
-                          Delete
+                        <button onClick={()=>startEdit(row)} className={cx(s.btn, s.secondary, 'w-full')}>Edit</button>
+                        <button
+                          onClick={()=>del(row)}
+                          className={cx(s.btn, s.danger, 'w-full')}
+                          disabled={deletingId === row.id}
+                        >
+                          {deletingId === row.id ? 'Deleting…' : 'Delete'}
                         </button>
                       </>
                     )
@@ -249,7 +232,7 @@ export default function Transactions() {
         )}
       </div>
 
-      {/* ===== Desktop table ===== */}
+      {/* Desktop table */}
       <div className={cx(s.card, 'hidden md:block')}>
         <div className="overflow-auto">
           <table className="w-full min-w-[720px] text-sm">
@@ -282,19 +265,14 @@ export default function Transactions() {
                         {isEditing ? (
                           <input
                             className={cx(s.input, 'w-28 text-right')}
-                            type="number"
-                            step="0.01"
+                            type="number" step="0.01"
                             value={editAmount}
                             onChange={(e)=>setEditAmount(e.target.value)}
                             autoFocus
                           />
                         ) : (
-                          <span
-                            className={cx(
-                              'font-semibold',
-                              row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700'
-                            )}
-                          >
+                          <span className={cx('font-semibold',
+                            row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700')}>
                             {fmtCurrency(Number(row.amount))}
                           </span>
                         )}
@@ -304,25 +282,21 @@ export default function Transactions() {
                         {canWrite ? (
                           isEditing ? (
                             <div className="inline-flex gap-2">
-                              <button
-                                onClick={()=>saveEdit(row)}
-                                disabled={savingEdit}
-                                className={cx(s.btn, s.primary)}
-                                type="button"
-                              >
+                              <button onClick={()=>saveEdit(row)} disabled={savingEdit} className={cx(s.btn, s.primary)} type="button">
                                 {savingEdit ? 'Saving…' : 'Save'}
                               </button>
-                              <button onClick={cancelEdit} type="button" className={cx(s.btn, s.secondary)}>
-                                Cancel
-                              </button>
+                              <button onClick={cancelEdit} type="button" className={cx(s.btn, s.secondary)}>Cancel</button>
                             </div>
                           ) : (
                             <div className="inline-flex gap-2">
-                              <button onClick={()=>startEdit(row)} type="button" className={cx(s.btn, s.secondary)}>
-                                Edit
-                              </button>
-                              <button onClick={()=>del(row.id)} className={cx(s.btn, s.danger)} type="button">
-                                Delete
+                              <button onClick={()=>startEdit(row)} type="button" className={cx(s.btn, s.secondary)}>Edit</button>
+                              <button
+                                onClick={()=>del(row)}
+                                className={cx(s.btn, s.danger)}
+                                type="button"
+                                disabled={deletingId === row.id}
+                              >
+                                {deletingId === row.id ? 'Deleting…' : 'Delete'}
                               </button>
                             </div>
                           )
