@@ -81,11 +81,11 @@ export default function Savings() {
           <input type="number" step="0.01" value={gTarget} onChange={(e)=>setGTarget(e.target.value)} className={s.input} disabled={!canWrite}/>
         </div>
         <div className="md:col-span-1 flex items-end">
-          <button className={cx(s.btn, s.primary)} type="submit" disabled={!canWrite}>Add Goal</button>
+          <button className={cx(s.btn, s.primary, 'w-full sm:w-auto')} type="submit" disabled={!canWrite}>Add Goal</button>
         </div>
       </form>
 
-      {/* Goals list */}
+      {/* Goals grid (already responsive) */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
         {goals.length === 0 ? (
           <div className={cx(s.card, 'p-4')}>No goals yet.</div>
@@ -133,12 +133,33 @@ export default function Savings() {
           <input value={note} onChange={(e)=>setNote(e.target.value)} placeholder="optional" className={s.input} disabled={!canWrite}/>
         </div>
         <div className="md:col-span-6 flex items-end justify-end">
-          <button className={cx(s.btn, s.primary)} type="submit" disabled={!canWrite}>Add Contribution</button>
+          <button className={cx(s.btn, s.primary, 'w-full sm:w-auto')} type="submit" disabled={!canWrite}>Add Contribution</button>
         </div>
       </form>
 
-      {/* Recent contributions */}
-      <div className={s.card}>
+      {/* ===== Recent contributions — Mobile cards ===== */}
+      <div className="grid gap-3 md:hidden">
+        {contribs.length === 0 ? (
+          <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>No contributions yet.</div>
+        ) : (
+          contribs.map(c => {
+            const g = goals.find(x => x.id === c.goal_id)
+            return (
+              <div key={c.id} className={cx(s.card, 'p-3')}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium">{g?.name || 'Goal'}</div>
+                  <div className="text-sm font-semibold text-indigo-700">{fmtCurrency(Number(c.amount))}</div>
+                </div>
+                <div className="mt-1 text-xs text-slate-600">{c.date}</div>
+                {c.note && <div className="mt-1 text-sm">{c.note}</div>}
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {/* ===== Recent contributions — Desktop table ===== */}
+      <div className={cx(s.card, 'hidden md:block')}>
         <div className="overflow-auto">
           <table className="w-full min-w-[760px] text-sm">
             <thead>

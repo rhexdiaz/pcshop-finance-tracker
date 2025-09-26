@@ -43,17 +43,13 @@ export default function Bills() {
   const refresh = async () => {
     const { data, error } = await supabase
       .from('bills')
-      .select(
-        'id,due_date,category,amount,paid,paid_at,recurring,recur_day,transaction_id'
-      )
+      .select('id,due_date,category,amount,paid,paid_at,recurring,recur_day,transaction_id')
       .order('due_date', { ascending: true })
 
     if (!error && data) setItems(data as Bill[])
   }
 
-  useEffect(() => {
-    refresh()
-  }, [])
+  useEffect(() => { refresh() }, [])
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -82,10 +78,10 @@ export default function Bills() {
     if (!bill.paid) {
       let txnId = bill.transaction_id
 
-      // Create expense only if we don't already have a linked transaction
+      // Create expense only if not yet linked
       if (!txnId) {
         const today = new Date().toISOString().slice(0, 10)
-        const note = `Bill paid: ${bill.category}` // clean note (no UUID)
+        const note = `Bill paid: ${bill.category}` // clean note
         const { data, error } = await supabase
           .from('transactions')
           .insert({
@@ -114,9 +110,7 @@ export default function Bills() {
       if (!updErr) {
         setItems(prev =>
           prev.map(b =>
-            b.id === bill.id
-              ? { ...b, paid: true, paid_at: nowISO, transaction_id: txnId! }
-              : b
+            b.id === bill.id ? { ...b, paid: true, paid_at: nowISO, transaction_id: txnId! } : b
           )
         )
       }
@@ -125,11 +119,9 @@ export default function Bills() {
 
     // Mark as UNPAID
     if (bill.paid) {
-      // Delete the linked expense if it exists
       if (bill.transaction_id) {
         await supabase.from('transactions').delete().eq('id', bill.transaction_id)
       }
-
       const { error: updErr } = await supabase
         .from('bills')
         .update({ paid: false, paid_at: null, transaction_id: null })
@@ -138,9 +130,7 @@ export default function Bills() {
       if (!updErr) {
         setItems(prev =>
           prev.map(b =>
-            b.id === bill.id
-              ? { ...b, paid: false, paid_at: null, transaction_id: null }
-              : b
+            b.id === bill.id ? { ...b, paid: false, paid_at: null, transaction_id: null } : b
           )
         )
       }
@@ -149,7 +139,6 @@ export default function Bills() {
 
   const del = async (id: string, transaction_id: string | null) => {
     if (!canWrite) return
-    // Optional safety: remove linked expense if bill is deleted
     if (transaction_id) {
       await supabase.from('transactions').delete().eq('id', transaction_id)
     }
@@ -230,23 +219,56 @@ export default function Bills() {
             min={1}
             max={28}
             value={recurDay}
-            onChange={e =>
-              setRecurDay(e.target.value ? Number(e.target.value) : '')
-            }
+            onChange={e => setRecurDay(e.target.value ? Number(e.target.value) : '')}
             className={s.input}
             disabled={!recurring || !canWrite}
           />
         </div>
 
         <div className="md:col-span-6 flex items-end justify-end">
-          <button className={cx(s.btn, s.primary)} type="submit" disabled={!canWrite}>
+          <button className={cx(s.btn, s.primary, 'w-full sm:w-auto')} type="submit" disabled={!canWrite}>
             Add Bill
           </button>
         </div>
       </form>
 
-      {/* List */}
-      <div className={s.card}>
+      {/* ===== Mobile cards ===== */}
+      <div className="grid gap-3 md:hidden">
+        {items.length === 0 ? (
+          <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>No bills yet.</div>
+        ) : (
+          items.map(b => (
+            <div key={b.id} className={cx(s.card, 'p-3')}>
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-medium">{b.category}</div>
+                <div className="text-sm font-semibold">{fmtCurrency(Number(b.amount))}</div>
+              </div>
+              <div className="mt-1 text-xs text-slate-600">
+                Due {b.due_date} • {b.recurring ? `Recurring (day ${b.recur_day ?? '-'})` : 'One-time'}
+              </div>
+              <div className="mt-1 text-sm">Status: {b.paid ? 'Paid' : 'Unpaid'}</div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {canWrite ? (
+                  <>
+                    <button onClick={() => togglePaid(b)} className={cx(s.btn, s.secondary)}>
+                      {b.paid ? 'Mark Unpaid' : 'Mark Paid'}
+                    </button>
+                    <button onClick={() => del(b.id, b.transaction_id)} className={cx(s.btn, s.danger)}>
+                      Delete
+                    </button>
+                  </>
+                ) : (
+                  <div className="col-span-2 text-right text-slate-400">View only</div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* ===== Desktop table ===== */}
+      <div className={cx(s.card, 'hidden md:block')}>
         <div className="overflow-auto">
           <table className="w-full min-w-[760px] text-sm">
             <thead>
@@ -262,35 +284,23 @@ export default function Bills() {
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td className={s.td} colSpan={6}>
-                    No bills yet.
-                  </td>
+                  <td className={s.td} colSpan={6}>No bills yet.</td>
                 </tr>
               ) : (
                 items.map(b => (
                   <tr key={b.id} className="border-t hover:bg-slate-50/50">
                     <td className={cx(s.td, 'whitespace-nowrap')}>{b.due_date}</td>
                     <td className={s.td}>{b.category}</td>
-                    <td className={cx(s.td, 'text-right font-semibold')}>
-                      {fmtCurrency(Number(b.amount))}
-                    </td>
-                    <td className={s.td}>
-                      {b.recurring ? `Yes (day ${b.recur_day ?? '-'})` : 'No'}
-                    </td>
+                    <td className={cx(s.td, 'text-right font-semibold')}>{fmtCurrency(Number(b.amount))}</td>
+                    <td className={s.td}>{b.recurring ? `Yes (day ${b.recur_day ?? '-'})` : 'No'}</td>
                     <td className={s.td}>{b.paid ? 'Paid' : 'Unpaid'}</td>
                     <td className={cx(s.td, 'text-right space-x-2')}>
                       {canWrite ? (
                         <>
-                          <button
-                            onClick={() => togglePaid(b)}
-                            className={cx(s.btn, s.secondary)}
-                          >
+                          <button onClick={() => togglePaid(b)} className={cx(s.btn, s.secondary)}>
                             {b.paid ? 'Mark Unpaid' : 'Mark Paid'}
                           </button>
-                          <button
-                            onClick={() => del(b.id, b.transaction_id)}
-                            className={cx(s.btn, s.danger)}
-                          >
+                          <button onClick={() => del(b.id, b.transaction_id)} className={cx(s.btn, s.danger)}>
                             Delete
                           </button>
                         </>

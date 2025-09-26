@@ -72,14 +72,12 @@ export default function Reports() {
   const csvEscape = (val: unknown) => {
     if (val === null || val === undefined) return ''
     const s = String(val)
-    // escape " by "", wrap in quotes if it contains delimiter, quote or newline
     const mustQuote = /[",\n\r]/.test(s)
     const body = s.replace(/"/g, '""')
     return mustQuote ? `"${body}"` : body
   }
 
   const downloadCSV = (filename: string, rows: string[][]) => {
-    // UTF-8 BOM for Excel
     const bom = '\uFEFF'
     const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n')
     const blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' })
@@ -131,8 +129,9 @@ export default function Reports() {
 
   return (
     <section className="grid gap-6">
+      {/* Controls + KPIs */}
       <header className={cx(s.card, 'p-4')}>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <div>
             <label className="text-sm text-slate-600">From</label>
             <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={s.input} />
@@ -152,7 +151,7 @@ export default function Reports() {
           />
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
           <button
             className={cx(s.btn, s.secondary)}
             onClick={exportMonthlyCSV}
@@ -177,8 +176,9 @@ export default function Reports() {
         </div>
       </header>
 
+      {/* Chart */}
       <div className={cx(s.card, 'p-4')}>
-        <div className="h-72 w-full">
+        <div className="h-56 w-full md:h-80">
           <ResponsiveContainer>
             <ComposedChart data={rows}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -194,7 +194,40 @@ export default function Reports() {
         </div>
       </div>
 
-      <div className={s.card}>
+      {/* Mobile monthly cards */}
+      <div className="grid gap-3 md:hidden">
+        {loading ? (
+          <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>Loading…</div>
+        ) : error ? (
+          <div className={cx(s.card, 'p-4 text-sm text-rose-700')}>{error}</div>
+        ) : rows.length === 0 ? (
+          <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>No data for selected period.</div>
+        ) : (
+          rows.map((r) => (
+            <div key={r.month} className={cx(s.card, 'p-3')}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium">{r.month}</div>
+                <div className={cx('text-sm font-semibold', r.profit >= 0 ? 'text-emerald-700' : 'text-rose-700')}>
+                  {fmtCurrency(r.profit)}
+                </div>
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-lg border border-slate-200 bg-white px-2 py-1">
+                  <div className="text-[11px] text-slate-500">Income</div>
+                  <div className="font-medium">{fmtCurrency(r.income)}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-white px-2 py-1">
+                  <div className="text-[11px] text-slate-500">Expenses</div>
+                  <div className="font-medium">{fmtCurrency(r.expenses)}</div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Desktop table */}
+      <div className={cx(s.card, 'hidden md:block')}>
         <div className="overflow-auto">
           <table className="w-full min-w-[760px] text-sm">
             <thead>

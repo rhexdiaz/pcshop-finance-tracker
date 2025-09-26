@@ -56,44 +56,80 @@ export default function AdminInvite() {
 
   return (
     <section className="grid gap-4">
-      <div>
-        <h1 className="text-xl font-semibold">Invite User</h1>
-        <p className="text-sm text-slate-600">
-          Sends a secure email. The user will set their own password after clicking the link.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Invite User</h1>
+          <p className="text-sm text-slate-600">
+            Sends a secure email. The user will set their own password after clicking the link.
+          </p>
+        </div>
+        <span className="hidden rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200 sm:inline">
+          Admin
+        </span>
       </div>
 
       {msg && <div className={cx(s.alert, 'border-emerald-200 bg-emerald-50 text-emerald-800')}>{msg}</div>}
       {error && <div className={cx(s.alert, 'border-rose-200 bg-rose-50 text-rose-700')}>{error}</div>}
 
-      <form onSubmit={submit} className={cx(s.card, 'grid grid-cols-1 gap-3 p-6 md:grid-cols-6')}>
-        <div className="md:col-span-3">
+      {/* Form: 1 col on mobile, 2 on small screens, 6 on md+ */}
+      <form
+        onSubmit={submit}
+        className={cx(s.card, 'grid grid-cols-1 gap-3 p-6 sm:grid-cols-2 md:grid-cols-6')}
+      >
+        <div className="sm:col-span-2 md:col-span-3">
           <label className="text-sm text-slate-600">Full name</label>
-          <input className={s.input} value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Juan Dela Cruz" required />
+          <input
+            className={s.input}
+            value={fullName}
+            onChange={e=>setFullName(e.target.value)}
+            placeholder="Juan Dela Cruz"
+            required
+          />
         </div>
-        <div className="md:col-span-3">
+
+        <div className="sm:col-span-2 md:col-span-3">
           <label className="text-sm text-slate-600">Email</label>
-          <input className={s.input} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@shop.com" required />
+          <input
+            className={s.input}
+            type="email"
+            value={email}
+            onChange={e=>setEmail(e.target.value)}
+            placeholder="user@shop.com"
+            required
+          />
         </div>
-        <div className="md:col-span-2">
+
+        <div className="sm:col-span-1 md:col-span-2">
           <label className="text-sm text-slate-600">Role</label>
-          <select className={s.select} value={role} onChange={e=>setRole(e.target.value as Role)}>
+          <select
+            className={s.select}
+            value={role}
+            onChange={e=>setRole(e.target.value as Role)}
+          >
             <option value="viewer">Viewer (read-only)</option>
             <option value="editor">Editor (edit/delete)</option>
             <option value="admin">Admin</option>
           </select>
         </div>
-        <div className="md:col-span-1 flex items-end justify-end">
-          <button className={cx(s.btn, s.primary, 'w-full')} type="submit" disabled={busy}>
+
+        <div className="sm:col-span-1 md:col-span-1 flex items-end justify-end">
+          <button
+            className={cx(s.btn, s.primary, 'w-full sm:w-auto')}
+            type="submit"
+            disabled={busy}
+          >
             {busy ? 'Sending…' : 'Send invite'}
           </button>
         </div>
       </form>
 
       <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>
-        <ul className="list-disc pl-5 space-y-1">
+        <ul className="list-disc space-y-1 pl-5">
           <li>Requires Mailgun (SMTP) configured in Supabase → Authentication → Email.</li>
-          <li>Invite link redirects to <code>/set-password</code> (configured via <code>INVITE_REDIRECT_TO</code> secret).</li>
+          <li>
+            Invite link redirects to <code>/set-password</code> (configure via{' '}
+            <code>INVITE_REDIRECT_TO</code> secret or Auth → Site URL).
+          </li>
           <li>Roles are stored in <code>profiles</code> and enforced by RLS.</li>
         </ul>
       </div>

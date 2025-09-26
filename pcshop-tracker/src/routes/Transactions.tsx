@@ -31,7 +31,11 @@ export default function Transactions() {
 
   const refresh = async () => {
     setLoading(true)
-    const { data, error } = await supabase.from('transactions').select('*').order('date', { ascending: false }).limit(200)
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .order('date', { ascending: false })
+      .limit(200)
     setLoading(false)
     if (error) return setError(error.message)
     setItems((data || []) as Tx[])
@@ -66,7 +70,12 @@ export default function Transactions() {
         </div>
       )}
 
-      <form onSubmit={add} className={cx(s.card, 'grid grid-cols-1 gap-3 p-4 md:grid-cols-6')} aria-disabled={!canWrite}>
+      {/* Form */}
+      <form
+        onSubmit={add}
+        className={cx(s.card, 'grid grid-cols-1 gap-3 p-4 md:grid-cols-6')}
+        aria-disabled={!canWrite}
+      >
         <div>
           <label className="text-sm text-slate-600">Type</label>
           <select value={type} onChange={(e)=>setType(e.target.value as TxType)} className={s.select} disabled={!canWrite}>
@@ -93,11 +102,53 @@ export default function Transactions() {
         </div>
         <div className="md:col-span-6 flex items-end justify-end gap-2">
           {error && <span className="mr-auto text-sm text-rose-700">{error}</span>}
-          <button type="submit" disabled={!valid || !canWrite} className={cx(s.btn, s.primary)}>Add</button>
+          <button type="submit" disabled={!valid || !canWrite} className={cx(s.btn, s.primary, 'w-full sm:w-auto')}>
+            Add
+          </button>
         </div>
       </form>
 
-      <div className={s.card}>
+      {/* ===== Mobile cards ===== */}
+      <div className="grid gap-3 md:hidden">
+        {loading ? (
+          <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>Loading…</div>
+        ) : items.length === 0 ? (
+          <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>No entries yet.</div>
+        ) : (
+          items.map((row) => (
+            <div key={row.id} className={cx(s.card, 'p-3')}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium">{row.category}</div>
+                <div
+                  className={cx(
+                    'text-sm font-semibold',
+                    row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700'
+                  )}
+                >
+                  {fmtCurrency(Number(row.amount))}
+                </div>
+              </div>
+              <div className="mt-1 text-xs text-slate-600">
+                {row.date} • {row.type}
+              </div>
+              {row.note && <div className="mt-1 text-sm">{row.note}</div>}
+
+              <div className="mt-2">
+                {canWrite ? (
+                  <button onClick={() => del(row.id)} className={cx(s.btn, s.danger, 'w-full')}>
+                    Delete
+                  </button>
+                ) : (
+                  <div className="text-right text-slate-400">View only</div>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* ===== Desktop table ===== */}
+      <div className={cx(s.card, 'hidden md:block')}>
         <div className="overflow-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
@@ -122,7 +173,10 @@ export default function Transactions() {
                     <td className={s.td}>{row.type}</td>
                     <td className={s.td}>{row.category}</td>
                     <td className={s.td}>{row.note}</td>
-                    <td className={cx(s.td, 'text-right font-semibold')}>{fmtCurrency(Number(row.amount))}</td>
+                    <td className={cx(s.td, 'text-right font-semibold',
+                      row.type === 'income' ? 'text-emerald-700' : row.type === 'expense' ? 'text-rose-700' : 'text-indigo-700')}>
+                      {fmtCurrency(Number(row.amount))}
+                    </td>
                     <td className={cx(s.td, 'text-right')}>
                       {canWrite ? (
                         <button onClick={()=>del(row.id)} className={cx(s.btn, s.danger)}>Delete</button>
