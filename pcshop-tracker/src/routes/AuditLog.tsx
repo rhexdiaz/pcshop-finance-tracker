@@ -13,6 +13,7 @@ type LogRow = {
   action: 'INSERT' | 'UPDATE' | 'DELETE'
   row_id: string | null
   actor_email: string | null
+  category: string | null            // NEW
   changes?: Changes
 }
 
@@ -26,21 +27,6 @@ function fmt(val: unknown) {
   try { return JSON.stringify(val) } catch { return String(val) }
 }
 
-/** Accepts JSONB object, JSON string, null/undefined and returns a safe object or null */
-function normalizeChanges(input: unknown): Record<string, DiffValue> | null {
-  if (!input) return null
-  if (typeof input === 'string') {
-    try {
-      const parsed = JSON.parse(input)
-      return parsed && typeof parsed === 'object' ? (parsed as Record<string, DiffValue>) : null
-    } catch {
-      return null
-    }
-  }
-  if (typeof input === 'object') return input as Record<string, DiffValue>
-  return null
-}
-
 export default function AuditLog() {
   const { profile } = useSession()
   const isAdmin = profile?.role === 'admin'
@@ -51,54 +37,25 @@ export default function AuditLog() {
   const [q, setQ] = useState('')
 
   useEffect(() => {
-    // Wait until profile is known; only run for admins
-    if (profile == null || !isAdmin) return
-
-    let cancelled = false
-
     const fetchIt = async () => {
-      try {
-        setLoading(true); setError(null)
-        const { data, error } = await supabase
-          .from('audit_logs')
-          .select('id, created_at, table_name, action, row_id, actor_email, changes')
-          .order('created_at', { ascending: false })
-          .limit(300)
-
-        if (error) throw error
-
-        if (!cancelled) {
-          const safe = (data ?? []).map((r: any) => ({
-            ...r,
-            changes: normalizeChanges(r?.changes),
-          })) as LogRow[]
-          setRows(safe)
-        }
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || 'Failed to load audit logs')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+      setLoading(true); setError(null)
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('id, created_at, table_name, action, row_id, actor_email, category, changes') // + category
+        .order('created_at', { ascending: false })
+        .limit(300)
+      setLoading(false)
+      if (error) { setError(error.message); return }
+      setRows((data as LogRow[]) ?? [])
     }
 
     fetchIt()
-
-    // Realtime: refresh when base table mutates
     const ch = supabase
       .channel('audit-log-feed')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_log' }, fetchIt)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_log' }, () => fetchIt())
       .subscribe()
-
-    return () => {
-      cancelled = true
-      supabase.removeChannel(ch)
-    }
-  }, [profile, isAdmin])
-
-  // While session/profile is resolving, show a soft loading
-  if (profile == null) {
-    return <div className={cx(s.card, 'p-4')}>Loading…</div>
-  }
+    return () => { supabase.removeChannel(ch) }
+  }, [])
 
   if (!isAdmin) {
     return <div className={cx(s.alert, 'm-4 border-rose-200 bg-rose-50 text-rose-700')}>Admins only.</div>
@@ -108,7 +65,9 @@ export default function AuditLog() {
     const term = q.trim().toLowerCase()
     if (!term) return rows
     return rows.filter(r =>
-      `${r.table_name} ${r.action} ${r.actor_email ?? ''}`.toLowerCase().includes(term)
+      `${r.table_name} ${r.action} ${r.actor_email ?? ''} ${r.category ?? ''}` // include category in search
+        .toLowerCase()
+        .includes(term)
     )
   }, [rows, q])
 
@@ -132,13 +91,13 @@ export default function AuditLog() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search table, action, email…"
+          placeholder="Search table, action, email, category…"
           className={s.input}
           style={{ maxWidth: 320 }}
         />
       </header>
 
-      {/* ===== Mobile cards ===== */}
+      {/* Mobile cards */}
       <div className="grid gap-3 md:hidden">
         {loading ? (
           <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>Loading…</div>
@@ -148,8 +107,11 @@ export default function AuditLog() {
           <div className={cx(s.card, 'p-4 text-sm text-slate-600')}>No entries.</div>
         ) : (
           filtered.map((r) => {
-            const ch = normalizeChanges(r.changes)
-            const hasChanges = r.action === 'UPDATE' && ch && Object.keys(ch).length > 0
+            const hasChanges =
+              r.action === 'UPDATE' &&
+              r.changes &&
+              typeof r.changes === 'object' &&
+              Object.keys(r.changes).length > 0
 
             return (
               <div key={r.id} className={cx(s.card, 'p-3')}>
@@ -159,7 +121,14 @@ export default function AuditLog() {
                       {new Date(r.created_at).toLocaleString()}
                     </div>
                     <div className="mt-0.5 text-sm font-medium">{r.table_name}</div>
-                    <div className="text-[13px] text-slate-600">{r.actor_email ?? '—'}</div>
+                    {r.category && (
+                      <div className="mt-0.5 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                        {r.category}
+                      </div>
+                    )}
+                    <div className="text-[13px] text-slate-600">
+                      {r.actor_email ?? '—'}
+                    </div>
                   </div>
                   <ActionBadge a={r.action} />
                 </div>
@@ -170,15 +139,15 @@ export default function AuditLog() {
                       Changes
                     </summary>
                     <div className="mt-2 space-y-1">
-                      {Object.entries(ch!).map(([field, v]) => (
+                      {Object.entries(r.changes as Record<string, DiffValue>).map(([field, v]) => (
                         <div key={field} className="rounded border border-slate-200 bg-white p-2 text-xs">
                           <div className="mb-1 font-medium">{field}</div>
                           <div className="grid grid-cols-2 gap-2">
                             <div className="text-slate-600">
-                              old: <code className="break-all">{fmt((v as DiffValue)?.old)}</code>
+                              old: <code className="break-all">{fmt(v?.old)}</code>
                             </div>
                             <div className="text-slate-800">
-                              new: <code className="break-all">{fmt((v as DiffValue)?.new)}</code>
+                              new: <code className="break-all">{fmt(v?.new)}</code>
                             </div>
                           </div>
                         </div>
@@ -194,14 +163,15 @@ export default function AuditLog() {
         )}
       </div>
 
-      {/* ===== Desktop table ===== */}
+      {/* Desktop table */}
       <div className={cx(s.card, 'hidden md:block')}>
         <div className="overflow-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr>
                 <th className={s.th}>Time</th>
                 <th className={s.th}>Table</th>
+                <th className={s.th}>Category</th> {/* NEW */}
                 <th className={s.th}>Action</th>
                 <th className={s.th}>Actor (email)</th>
                 <th className={s.th}>Changes</th>
@@ -209,31 +179,35 @@ export default function AuditLog() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className={s.td} colSpan={5}>Loading…</td></tr>
+                <tr><td className={s.td} colSpan={6}>Loading…</td></tr>
               ) : error ? (
-                <tr><td className={s.td} colSpan={5}>⚠ {error}</td></tr>
+                <tr><td className={s.td} colSpan={6}>⚠ {error}</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td className={s.td} colSpan={5}>No entries.</td></tr>
+                <tr><td className={s.td} colSpan={6}>No entries.</td></tr>
               ) : (
                 filtered.map((r) => {
-                  const ch = normalizeChanges(r.changes)
-                  const hasChanges = r.action === 'UPDATE' && ch && Object.keys(ch).length > 0
+                  const hasChanges =
+                    r.action === 'UPDATE' &&
+                    r.changes &&
+                    typeof r.changes === 'object' &&
+                    Object.keys(r.changes).length > 0
 
                   return (
                     <tr key={r.id} className="border-t align-top">
                       <td className={s.td}>{new Date(r.created_at).toLocaleString()}</td>
                       <td className={s.td}>{r.table_name}</td>
+                      <td className={s.td}>{r.category ?? '—'}</td> {/* NEW */}
                       <td className={s.td}><ActionBadge a={r.action} /></td>
                       <td className={s.td}>{r.actor_email ?? '—'}</td>
                       <td className={s.td}>
                         {hasChanges ? (
                           <div className="space-y-1">
-                            {Object.entries(ch!).map(([field, v]) => (
+                            {Object.entries(r.changes as Record<string, DiffValue>).map(([field, v]) => (
                               <div key={field} className="rounded border border-slate-200 bg-white p-2 text-xs">
                                 <div className="mb-1 font-medium">{field}</div>
                                 <div className="grid grid-cols-2 gap-2">
-                                  <div className="text-slate-600">old: <code>{fmt((v as DiffValue)?.old)}</code></div>
-                                  <div className="text-slate-800">new: <code>{fmt((v as DiffValue)?.new)}</code></div>
+                                  <div className="text-slate-600">old: <code>{fmt(v?.old)}</code></div>
+                                  <div className="text-slate-800">new: <code>{fmt(v?.new)}</code></div>
                                 </div>
                               </div>
                             ))}
