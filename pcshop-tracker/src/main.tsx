@@ -13,6 +13,7 @@ import AdminInvite from './routes/AdminInvite'
 import Auth from './routes/Auth' 
 import Reports from './routes/Reports' 
 import SetPassword from './routes/SetPassword'
+import AuditLog from './routes/AuditLog'
 
 const router = createBrowserRouter([
   {
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
       { path: 'reports', element: <Reports /> },
       { path: 'admin/invite', element: <AdminInvite /> }, // admin-only UI (component checks role)
       { path: 'set-password', element: <SetPassword /> },
+      { path: 'audit', element: <AuditLog /> },
     ],
   },
 ])
