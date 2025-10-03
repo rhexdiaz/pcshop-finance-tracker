@@ -9,8 +9,8 @@ type TxType = 'income' | 'expense' | 'savings'
 type Tx = { id: string; date: string; type: TxType; category: string; amount: number; note?: string }
 
 const CATS: Record<TxType, string[]> = {
-  income: ['PisoNet', 'Water Refilling', 'Printing', 'Other'],
-  expense: ['Salaries', 'Foods', 'Business Permit', 'Other'],
+  income: ['PisoNet', 'Kiosk', 'Printing', 'Water Vendo', 'Other'],
+  expense: ['Salaries', 'Foods', 'Business Permit','Petty Cash', 'Other'],
   savings: ['Emergency Fund', 'Store Upgrade', 'Marketing Fund', 'New Tools', 'Other'],
 }
 
